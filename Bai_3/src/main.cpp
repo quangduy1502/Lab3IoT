@@ -114,6 +114,21 @@ void task_led_blinky(void *pvParameters) {
     }
 }
 
+void reset_globals_task(void *pvParameters) {
+    while (1) {
+        glob_temperature = 0.0f;
+        glob_humidity = 0.0f;
+
+        Serial.print("Temperature: ");
+        Serial.print(glob_temperature, 1);
+        Serial.print(" C  Humidity: ");
+        Serial.print(glob_humidity, 1);
+        Serial.println(" %");
+
+        vTaskDelay(pdMS_TO_TICKS(9000));
+    }
+}
+
 void setup() {
     Serial.begin(115200);
 
@@ -138,6 +153,15 @@ void setup() {
     xTaskCreate(
         task_led_blinky,
         "LED",
+        2048,
+        NULL,
+        2,
+        NULL
+    );
+
+    xTaskCreate(
+        reset_globals_task,
+        "Sensor error simulation",
         2048,
         NULL,
         2,
