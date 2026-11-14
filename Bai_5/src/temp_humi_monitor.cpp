@@ -1,36 +1,105 @@
 #include "temp_humi_monitor.h"
+
 #include <Wire.h>
 #include <math.h>
+
 DHT20 dht20;
 LiquidCrystal_I2C lcd(33, 16, 2);
 
-void displayData(float t, float h, bool error) {
-  lcd.setCursor(0, 0); lcd.print("                ");
-  lcd.setCursor(0, 1); lcd.print("                ");
-  lcd.setCursor(0, 0);
-  if (error) { lcd.print("Sensor error"); Serial.println("Sensor error"); return; }
-  lcd.print("Temp: "); lcd.print(t, 1); lcd.print(" C");
-  lcd.setCursor(0, 1); lcd.print("Humi: "); lcd.print(h, 1); lcd.print(" %");
-  Serial.printf("Temperature: %.1f C  Humidity: %.1f %%\n", t, h);
-}
-void temp_humi_monitor(void *p) {
-  dht20.begin(11, 12); // initializes Wire with YoloUNO SDA and SCL
-  lcd.begin(); lcd.backlight();
-  // The library rejects reads in the first second after startup.
-  vTaskDelay(pdMS_TO_TICKS(1100));
-  bool initialized = false; float filteredT = 0, filteredH = 0;
-  const float alpha = 0.3f;
-  while (true) {
-    int status = dht20.read();
-    float t = dht20.getTemperature(), h = dht20.getHumidity();
-    bool error = status != DHT20_OK || isnan(t) || isnan(h);
-    if (!error) {
-      if (!initialized) { filteredT = t; filteredH = h; initialized = true; }
-      else { filteredT += alpha * (t - filteredT); filteredH += alpha * (h - filteredH); }
-      t = filteredT; h = filteredH;
+void displayData(float temperature, float humidity, bool error) {
+    lcd.setCursor(0, 0);
+    lcd.print("                ");
+
+    lcd.setCursor(0, 1);
+    lcd.print("                ");
+
+    lcd.setCursor(0, 0);
+
+    if (error) {
+        lcd.print("Sensor error");
+        Serial.println("Failed to read DHT20!");
+        return;
     }
-    if (error) { t = 0; h = 0; }
-    setSensorData(t, h, error); displayData(t, h, error);
-    vTaskDelay(pdMS_TO_TICKS(5000));
-  }
+
+    lcd.print("Temp: ");
+    lcd.print(temperature, 1);
+    lcd.print(" C");
+
+    lcd.setCursor(0, 1);
+    lcd.print("Humi: ");
+    lcd.print(humidity, 1);
+    lcd.print(" %");
+
+    Serial.print("Temperature: ");
+    Serial.print(temperature, 1);
+    Serial.print(" C  Humidity: ");
+    Serial.print(humidity, 1);
+    Serial.println(" %");
+}
+
+void temp_humi_monitor(void *pvParameters) {
+    dht20.begin(11, 12);
+
+    lcd.begin();
+    lcd.backlight();
+
+    vTaskDelay(pdMS_TO_TICKS(1100));
+
+    bool initialized = false;
+
+    float filteredTemperature = 0;
+    float filteredHumidity = 0;
+
+    const float alpha = 0.3f;
+
+    while (1) {
+        int status = dht20.read();
+
+        float temperature = dht20.getTemperature();
+        float humidity = dht20.getHumidity();
+
+        bool error = false;
+
+        if (status != DHT20_OK ||
+            isnan(temperature) ||
+            isnan(humidity) ||
+            (temperature == 0.0f && humidity == 0.0f)) {
+            error = true;
+        }
+
+        if (!error) {
+            if (!initialized) {
+                filteredTemperature = temperature;
+                filteredHumidity = humidity;
+
+                initialized = true;
+            }
+            else {
+                filteredTemperature =
+                    filteredTemperature +
+                    alpha * (temperature - filteredTemperature);
+
+                filteredHumidity =
+                    filteredHumidity +
+                    alpha * (humidity - filteredHumidity);
+            }
+
+            temperature = filteredTemperature;
+            humidity = filteredHumidity;
+        }
+        else {
+            temperature = 0;
+            humidity = 0;
+        }
+
+        glob_temperature = temperature;
+        glob_humidity = humidity;
+
+        sensor_error = error;
+        sensor_ready = true;
+
+        displayData(temperature, humidity, error);
+
+        vTaskDelay(pdMS_TO_TICKS(5000));
+    }
 }
